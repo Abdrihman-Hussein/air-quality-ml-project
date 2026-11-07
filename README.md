@@ -1,181 +1,205 @@
-# 🌫️ Air Quality PM2.5 Risk Classification
+# 🌫️ Air Quality — Machine Learning Project
 
-A Machine Learning classification project that predicts the PM2.5 pollution class (`pm_risk`: Clean, Moderate or High) from nine low-cost gas and weather sensor readings: PM10, NOx, NO2, SO2, VOCs, CO, CO2, CH4 and Temperature.
+A machine learning project that predicts how polluted the air is from cheap gas and weather sensor readings. It sorts each reading into one of three PM2.5 risk levels: **Clean**, **Moderate**, or **High**.
 
----
-
-## 📌 Problem Statement & Overview
-
-### The Problem
-Fine particulate matter (PM2.5) is the pollutant with the strongest link to respiratory and cardiovascular disease, but reference-grade PM2.5 monitors are expensive and sparse. Cheap gas sensors are everywhere, yet they do not measure PM2.5 directly. If the other readings carry enough signal, a model can flag when particulate levels are likely to be unhealthy and trigger a closer measurement or a public warning.
-
-### The Machine Learning Solution
-This project turns the measured PM2.5 value into three pollution classes, removes PM2.5 from the inputs so the model cannot copy the answer, and learns to recover the class from the remaining sensors. It compares **Logistic Regression** and **Random Forest** classifiers on a stratified train/test split, with macro-averaged precision, recall, F1 and ROC-AUC to keep every class visible.
+The goal is simple: low-cost sensors are everywhere, but they do not measure PM2.5 directly. This project asks whether the other readings carry enough signal to flag risky air anyway.
 
 ---
 
-## ⚙️ Pipeline Architecture
+## 📌 At a Glance
+
+| Item | Detail |
+| :--- | :--- |
+| **Task** | Multi-class classification |
+| **Input** | 9 gas and weather sensor readings |
+| **Output** | `Clean`, `Moderate`, or `High` |
+| **Best model** | Random Forest |
+| **Accuracy** | 75% on the test split |
+| **Dataset** | 500 sensor snapshots |
+
+---
+
+## 🧭 Why This Project Matters
+
+Fine particulate matter (PM2.5) is one of the pollutants most strongly linked to breathing and heart problems. Reference-grade PM2.5 monitors are expensive and not available everywhere.
+
+Cheap gas sensors are common, but they measure other things: nitrogen oxides, carbon monoxide, VOCs, temperature, and more. If those readings can predict PM2.5 risk, a cheap device could warn people when the air is likely to be unhealthy.
+
+This project tests that idea end to end: clean the data, build a risk label, train two classifiers, evaluate them honestly, and make a single prediction from a new sensor snapshot.
+
+---
+
+## 📈 Results
+
+Both models use the same stratified 80/20 split with `random_state=42`.
+
+| Model | Accuracy | Precision (macro) | Recall (macro) | F1 (macro) | ROC-AUC (macro) |
+| :--- | ---: | ---: | ---: | ---: | ---: |
+| Logistic Regression | 72.0% | 63.6% | 62.5% | 59.7% | 87.7% |
+| **Random Forest** | **75.0%** | **77.5%** | **66.3%** | **65.5%** | **89.9%** |
+
+Random Forest is the stronger model overall. It catches **94%** of `High` rows and **85%** of `Moderate` rows. Most of its mistakes are on the `Clean` class, where there are only 20 test rows to learn from.
+
+![Random Forest confusion matrix](outputs/confusion_matrix_rf.png)
+
+### Why not 100% accuracy?
+
+The risk label is built from PM2.5, but PM2.5 is deliberately removed from the input features. Keeping it would leak the answer and make the model useless on a device that cannot measure PM2.5.
+
+That leaves the model to infer the risk from sensors that only approximate it. Around the 35 µg/m³ cut-off, the sensor readings are noisy enough that `Clean` and `Moderate` overlap. A perfect score is not possible with this data, and the project does not pretend otherwise.
+
+---
+
+## ⚙️ How It Works
 
 ```
-                 ┌──────────────────────────────┐
-                 │ dataset/raw_dataset.csv      │
-                 │ 500 rows, 10 sensor columns  │
-                 └─────────────┬────────────────┘
-                               │
-                               ▼
-                 ┌──────────────────────────────┐
-                 │       preprocessing.py       │
-                 │ • Drop Duplicate Records     │
-                 │ • Clip Negative Sensor Reads │
-                 │ • Build pm_risk from PM2.5   │
-                 │ • Drop PM2.5 (no leakage)    │
-                 └─────────────┬────────────────┘
-                               │
-                               ▼
-                 ┌──────────────────────────────┐
-                 │     clean_dataset.csv        │
-                 │ 9 features + pm_risk         │
-                 └─────────────┬────────────────┘
-                               │
-                               ▼
-                 ┌──────────────────────────────┐
-                 │          train.py            │
-                 │ • Stratified Train/Test      │
-                 │ • StandardScaler (9 features)│
-                 │ • Train LR & RF Models       │
-                 └─────────────┬────────────────┘
-                               │
-      ┌────────────────────────┴────────────────────────┐
-      ▼                                                 ▼
-┌───────────────────────────────┐             ┌───────────────────────────────┐
-│         evaluate.py           │             │          predict.py           │
-│ • Accuracy, Macro P/R/F1      │             │ • One Sensor Snapshot         │
-│ • Macro ROC-AUC               │             │ • Class + Probability         │
-│ • Confusion Matrix Plots      │             │                               │
-└───────────────────────────────┘             └───────────────────────────────┘
+dataset/raw_dataset.csv
+          │
+          ▼
+   preprocessing.py
+   • remove duplicates
+   • clip negative readings
+   • build pm_risk from PM2.5
+   • drop PM2.5 to avoid leakage
+          │
+          ▼
+dataset/clean_dataset.csv
+          │
+          ├──────────────► train.py ──────► models/*.pkl
+          │
+          ├──────────────► evaluate.py ───► metrics + plots
+          │
+          └──────────────► predict.py ────► one risk label
 ```
+
+### The Two Models
+
+**Logistic Regression**
+- A simple, interpretable baseline.
+- Features are standardized with `StandardScaler`.
+- Shows how far a linear model can go.
+
+**Random Forest**
+- 300 trees with `balanced_subsample` class weights.
+- Captures non-linear sensor interactions.
+- Gives the smaller `Clean` class a fairer say during training.
 
 ---
 
-## 📊 Dataset & Feature Description
+## 📊 Dataset
 
-The dataset holds 500 sensor snapshots with no missing values and no duplicate rows.
+The dataset contains **500 sensor snapshots** with no missing values and no duplicate rows. Four readings came in slightly negative and were clipped to zero.
+
+### Target Classes
+
+The label comes from the measured PM2.5 value:
+
+| Class | PM2.5 range | Rows |
+| :--- | :--- | ---: |
+| `Clean` | ≤ 35 µg/m³ | 100 |
+| `Moderate` | 35 – 60 µg/m³ | 230 |
+| `High` | > 60 µg/m³ | 170 |
+
+The 35 µg/m³ cut-off follows the EPA 24-hour PM2.5 standard. The other two bands keep the classes reasonably balanced.
 
 ### Input Features
 
-| Feature | Description | Range / Units |
-| :--- | :--- | :--- |
-| `PM10` | Coarse particulate matter | 12.9 - 171.6 µg/m³ |
-| `NOx` | Nitrogen oxides | 0 - 225.9 ppb |
-| `NO2` | Nitrogen dioxide | 0 - 115.9 ppb |
-| `SO2` | Sulphur dioxide | 0 - 31.9 ppb |
-| `VOCs` | Volatile organic compounds | 27.6 - 231.9 ppb |
-| `CO` | Carbon monoxide | 0.37 - 4.80 ppm |
-| `CO2` | Carbon dioxide | 366 - 559 ppm |
-| `CH4` | Methane | 1.39 - 3.35 ppm |
-| `Temperature` | Ambient temperature | 19.6 - 39.8 °C |
-
-A handful of readings (one NOx, one NO2, two SO2) came in slightly negative, which a real sensor cannot report. `preprocessing.py` clips them to zero.
-
-### Target Variable
-- **`pm_risk`**: pollution class derived from the measured PM2.5 value.
-
-| Class | PM2.5 range | Rows |
-| :--- | :--- | :--- |
-| `Clean` | ≤ 35 µg/m³ | 100 |
-| `Moderate` | 35 - 60 µg/m³ | 230 |
-| `High` | > 60 µg/m³ | 170 |
-
-The 35 µg/m³ cut-off is the EPA 24-hour PM2.5 standard. The other two bands split the rest of the data close to even thirds, so all three classes have enough rows to train on. The strict EPA four-band scale is unusable here because only one row would fall in "Good".
-
-PM2.5 is **dropped from the feature set** after the class is built, since keeping it would leak the answer.
+| Feature | Meaning |
+| :--- | :--- |
+| `PM10` | Coarse particulate matter |
+| `NOx` | Nitrogen oxides |
+| `NO2` | Nitrogen dioxide |
+| `SO2` | Sulphur dioxide |
+| `VOCs` | Volatile organic compounds |
+| `CO` | Carbon monoxide |
+| `CO2` | Carbon dioxide |
+| `CH4` | Methane |
+| `Temperature` | Ambient temperature |
 
 ---
 
-## 🤖 Models Trained
+## 🚀 Run It
 
-1. **Logistic Regression**
-   - All nine sensor features standardized with `StandardScaler`.
-   - Interpretable linear baseline that shows how far simple additive effects go.
-
-2. **Random Forest Classifier**
-   - 300 trees with `balanced_subsample` class weights, which give the smaller `Clean` class a fairer say.
-   - Captures non-linear sensor interactions and threshold effects.
-
-Both models use `random_state=42` and share the same stratified 80/20 split.
-
----
-
-## 📈 Evaluation & Diagnostics
-
-Metrics are macro-averaged so the smaller `Clean` class counts as much as the larger ones:
-- **Accuracy, Precision, Recall, F1-Score**
-- **ROC-AUC** (one-vs-rest, macro)
-- **Confusion matrix plots** saved in `outputs/`:
-  - `confusion_matrix_lr.png`
-  - `confusion_matrix_rf.png`
-
-Results on the 100-row test split:
-
-| Model | Accuracy | Precision (macro) | Recall (macro) | F1 (macro) | ROC-AUC (macro) |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| Logistic Regression | 0.7200 | 0.6356 | 0.6250 | 0.5965 | 0.8774 |
-| Random Forest | 0.7500 | 0.7754 | 0.6630 | 0.6554 | 0.8985 |
-
-Random Forest comes out ahead on accuracy, macro F1 and ROC-AUC, so it is the model to use. `evaluate.py` also prints a per-class report, which shows where the remaining mistakes sit.
-
-### Why some rows are still misclassified
-The class comes from PM2.5, but PM2.5 is not one of the inputs. Rebuilding it from the nine sensors with a Random Forest regressor reaches R² ≈ 0.66 with an error of about 14 µg/m³, and 115 of the 500 rows sit between 30 and 40 µg/m³. Around the 35 µg/m³ cut-off the sensor noise is therefore wider than the band itself, so `Clean` and `Moderate` overlap and no classifier can separate every row. On the test split the Random Forest gets the extremes right (94% of `High` and 85% of `Moderate` recalled) and mostly struggles with `Clean`, where 20 test rows are not enough to learn a stable low-pollution signature. This is a limit of the data, not of the code.
-
----
-
-## 💻 How to Run
-
-```bash
-# 1. Clean data, build pm_risk, drop PM2.5
-python preprocessing.py
-
-# 2. Train classifiers & export model binaries
-python train.py
-
-# 3. Evaluate performance metrics & generate confusion matrix plots
-python evaluate.py
-
-# 4. Run a sample sensor-snapshot prediction
-python predict.py
-```
-
-The scripts resolve `dataset/`, `models/` and `outputs/` from their own location, so the same commands also work when you are one folder above the project.
-
-Install dependencies first:
+Install the dependencies:
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-On Windows, `pandas` is pinned below 3.x because newer builds are blocked by Application Control on this machine.
+Run the pipeline in order:
+
+```bash
+python preprocessing.py   # clean data and build pm_risk
+python train.py           # train Logistic Regression and Random Forest
+python evaluate.py        # print metrics and save plots
+python predict.py         # predict one new sensor snapshot
+```
+
+The scripts find `dataset/`, `models/`, and `outputs/` relative to their own location, so they work from the project folder or from one folder above it.
+
+### Sample Prediction
+
+`predict.py` uses one realistic street-level reading and prints:
+
+```text
+=== AIR QUALITY PM2.5 RISK PREDICTION ===
+Logistic Regression: High (68.44%)
+Random Forest      : High (85.67%)
+```
 
 ---
 
-## 📁 Directory Structure
+## 🧠 What Made This Project Interesting
+
+- **Avoiding data leakage.** The target is derived from PM2.5, so PM2.5 had to be removed from the features. Without that step, the model would look impressive and be useless in the real world.
+- **Class imbalance.** `Clean` is the smallest class, so macro-averaged metrics are used instead of accuracy alone.
+- **A hard boundary.** Many rows sit close to the 35 µg/m³ line. When the sensors are noisy, some `Clean` and `Moderate` rows become genuinely hard to separate.
+- **Honest evaluation.** The project reports where the model fails, not just the headline accuracy.
+
+---
+
+## 📁 Project Structure
 
 ```
 air-quality-pm25/
 ├── dataset/
-│   ├── raw_dataset.csv          # Raw sensor readings
-│   └── clean_dataset.csv        # Clipped features + pm_risk target
-├── models/                      # Saved binaries (*.pkl - ignored by Git)
+│   ├── raw_dataset.csv          # Original sensor readings
+│   └── clean_dataset.csv        # Cleaned features + pm_risk target
+├── models/                      # Saved model binaries
 │   ├── feature_columns.pkl
 │   ├── logistic_regression.pkl
 │   ├── random_forest.pkl
 │   └── scaler.pkl
-├── outputs/                     # Visual diagnostic plots
+├── outputs/                     # Evaluation plots
 │   ├── confusion_matrix_lr.png
 │   └── confusion_matrix_rf.png
-├── preprocessing.py             # Cleaning, clipping & target creation
-├── train.py                     # Training script
-├── evaluate.py                  # Evaluation script
-├── predict.py                   # Sensor-snapshot prediction script
-├── requirements.txt             # Requirements
-└── README.md                    # Project documentation
+├── preprocessing.py             # Cleaning and target creation
+├── train.py                     # Model training
+├── evaluate.py                  # Metrics and plots
+├── predict.py                   # Single-reading prediction
+├── requirements.txt
+└── README.md
 ```
+
+---
+
+## 🛠️ Tech Stack
+
+- **Python 3.13**
+- **pandas** for data cleaning
+- **scikit-learn** for models and metrics
+- **matplotlib** for confusion matrices
+- **joblib** for saving models
+
+On Windows, `pandas` is pinned below 3.x because newer builds are blocked by Application Control on this machine.
+
+---
+
+## 👤 Author
+
+**Abdrihman Hussein**
+
+Junior data analyst, currently working on data science and machine learning.
+
+- GitHub: [@Abdrihman-Hussein](https://github.com/Abdrihman-Hussein)
+- Portfolio: [abdrihman-hussein-portfolio.vercel.app](https://abdrihman-hussein-portfolio.vercel.app)
