@@ -161,7 +161,7 @@ Random Forest      : High (85.67%)
 ## 📁 Project Structure
 
 ```
-air-quality-pm25/
+air-quality-ml-project/
 ├── dataset/
 │   ├── raw_dataset.csv          # Original sensor readings
 │   └── clean_dataset.csv        # Cleaned features + pm_risk target
@@ -173,6 +173,7 @@ air-quality-pm25/
 ├── outputs/                     # Evaluation plots
 │   ├── confusion_matrix_lr.png
 │   └── confusion_matrix_rf.png
+├── .gitignore
 ├── preprocessing.py             # Cleaning and target creation
 ├── train.py                     # Model training
 ├── evaluate.py                  # Metrics and plots
